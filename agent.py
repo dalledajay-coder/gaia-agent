@@ -32,6 +32,7 @@ from tools.file_tools import read_file
 from tools.math_tools import calculate
 from tools.wikipedia_tool import wikipedia_lookup, wikipedia_search
 from tools.download_tool import download_file
+from tools.vision_tool import analyze_image
 
 
 SYSTEM_PROMPT = """You are an expert AI assistant solving GAIA benchmark tasks. You MUST provide precise, exact answers.
@@ -48,7 +49,9 @@ SYSTEM_PROMPT = """You are an expert AI assistant solving GAIA benchmark tasks. 
 - **Web Browse**: Use web_browse to get full content from specific URLs found via search.
 - **Code Execution**: Use execute_python for calculations, data processing, parsing structured data, counting, sorting.
 - **Calculate**: Use for simple math expressions. For complex computations, prefer execute_python.
-- **Bash**: Use for file system operations, running system commands.
+- **Image Analysis**: Use analyze_image for questions about images, charts, diagrams, or text in images.
+- **Download**: Use download_file to fetch files from URLs.
+- **Bash**: Use for file system operations, running system commands, installing packages.
 
 ## Answer Rules
 - Give ONLY the exact answer. No explanations, no qualifications, no "approximately".
@@ -84,7 +87,7 @@ def create_gaia_tools_server():
     return create_sdk_mcp_server(
         name="gaia_tools",
         version="1.0.0",
-        tools=[web_search, web_browse, execute_python, read_file, calculate, wikipedia_lookup, wikipedia_search, download_file],
+        tools=[web_search, web_browse, execute_python, read_file, calculate, wikipedia_lookup, wikipedia_search, download_file, analyze_image],
     )
 
 
@@ -128,6 +131,7 @@ async def solve_task(question: str, file_path: str | None = None, max_turns: int
             "mcp__gaia_tools__wikipedia_lookup",
             "mcp__gaia_tools__wikipedia_search",
             "mcp__gaia_tools__download_file",
+            "mcp__gaia_tools__analyze_image",
             "Read",
             "Bash",
             "Glob",
