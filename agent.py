@@ -12,6 +12,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Prevent nested Claude Code session detection
+os.environ.pop("CLAUDECODE", None)
+
 from claude_agent_sdk import (
     query,
     ClaudeAgentOptions,
@@ -27,28 +30,51 @@ from tools.web_search import web_search, web_browse
 from tools.code_execution import execute_python
 from tools.file_tools import read_file
 from tools.math_tools import calculate
+from tools.wikipedia_tool import wikipedia_lookup, wikipedia_search
 
 
-SYSTEM_PROMPT = """You are an expert AI assistant designed to solve complex, multi-step tasks from the GAIA benchmark. You must provide precise, exact answers.
+SYSTEM_PROMPT = """You are an expert AI assistant solving GAIA benchmark tasks. You MUST provide precise, exact answers.
 
-CRITICAL RULES:
-1. Your final answer must be EXACT - not approximate, not explained, just the precise answer.
-2. When the question asks for a specific format (number, name, date, etc.), match that format exactly.
-3. Use tools strategically: search the web, execute code, read files, and calculate as needed.
-4. Break complex problems into steps. Think carefully before answering.
-5. For numerical answers: give the exact number, no units unless asked.
-6. For names: give the exact name as commonly known.
-7. For dates: use the format requested or the most standard format.
-8. Do NOT hedge or say "approximately". Give the definitive answer.
-9. If a file is attached to the task, ALWAYS read it first using read_file.
-10. For mathematical/computational questions, use the calculate tool or execute_python for verification.
-11. When searching the web, try multiple search queries if the first doesn't yield results.
-12. Cross-verify important facts from multiple sources when possible.
+## Strategy
+1. ANALYZE the question carefully. Identify what type of answer is expected (number, name, date, list, etc.).
+2. PLAN your approach: what tools do you need? What information do you need to find?
+3. EXECUTE: Use tools systematically. If one approach fails, try another.
+4. VERIFY: Double-check your answer before submitting.
 
-ANSWER FORMAT:
-- Your final response must contain ONLY the answer on the last line
-- Prefix your final answer with "FINAL ANSWER: " followed by just the answer
-- Examples: "FINAL ANSWER: 42", "FINAL ANSWER: Paris", "FINAL ANSWER: 2024-01-15"
+## Tool Usage Guidelines
+- **Files**: If a file is mentioned or attached, ALWAYS read it first with read_file or Read tool.
+- **Web Search**: Use web_search for factual questions, current events, specific data lookups. Try multiple queries if first attempt fails.
+- **Web Browse**: Use web_browse to get full content from specific URLs found via search.
+- **Code Execution**: Use execute_python for calculations, data processing, parsing structured data, counting, sorting.
+- **Calculate**: Use for simple math expressions. For complex computations, prefer execute_python.
+- **Bash**: Use for file system operations, running system commands.
+
+## Answer Rules
+- Give ONLY the exact answer. No explanations, no qualifications, no "approximately".
+- Numbers: exact value, no units unless the question asks for units. No commas in numbers unless they're part of the answer format.
+- Names: full name as commonly known (e.g., "Albert Einstein" not "A. Einstein").
+- Dates: use the format the question specifies, or YYYY-MM-DD if unspecified.
+- Lists: comma-separated unless otherwise specified.
+- If the question asks "how many", give just the number.
+- If the question asks for a name, give just the name.
+- Round numbers only if the question asks you to round.
+
+## Common Pitfalls to Avoid
+- Don't guess. If you can't find the answer, search more broadly.
+- Don't confuse similar entities (e.g., cities with same name in different countries).
+- Read the ENTIRE question - don't miss qualifiers like "as of 2023" or "in millions".
+- For Wikipedia questions, browse the actual Wikipedia page rather than relying on search snippets.
+- For file-based questions, make sure you process ALL the data, not just a sample.
+
+## Final Answer Format
+End your response with exactly:
+FINAL ANSWER: <your answer here>
+
+Examples:
+FINAL ANSWER: 42
+FINAL ANSWER: Marie Curie
+FINAL ANSWER: 2024-01-15
+FINAL ANSWER: hydrogen, helium, lithium
 """
 
 
@@ -57,7 +83,7 @@ def create_gaia_tools_server():
     return create_sdk_mcp_server(
         name="gaia_tools",
         version="1.0.0",
-        tools=[web_search, web_browse, execute_python, read_file, calculate],
+        tools=[web_search, web_browse, execute_python, read_file, calculate, wikipedia_lookup, wikipedia_search],
     )
 
 
@@ -98,6 +124,8 @@ async def solve_task(question: str, file_path: str | None = None, max_turns: int
             "mcp__gaia_tools__execute_python",
             "mcp__gaia_tools__read_file",
             "mcp__gaia_tools__calculate",
+            "mcp__gaia_tools__wikipedia_lookup",
+            "mcp__gaia_tools__wikipedia_search",
             "Read",
             "Bash",
             "Glob",
@@ -130,6 +158,22 @@ async def solve_task(question: str, file_path: str | None = None, max_turns: int
 
     # Return last text as fallback
     return last_text.strip().split("\n")[-1].strip() if last_text else "UNABLE TO DETERMINE"
+
+
+async def solve_task_with_retry(question: str, file_path: str | None = None, max_retries: int = 2) -> str:
+    """Solve a task with retry logic for robustness."""
+    last_answer = ""
+    for attempt in range(max_retries):
+        try:
+            answer = await solve_task(question, file_path, max_turns=25 + attempt * 5)
+            if answer and answer != "UNABLE TO DETERMINE":
+                return answer
+            last_answer = answer
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed: {e}", file=sys.stderr)
+            last_answer = f"ERROR: {e}"
+            await asyncio.sleep(2)
+    return last_answer
 
 
 async def main():

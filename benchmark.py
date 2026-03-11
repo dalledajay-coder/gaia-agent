@@ -13,6 +13,9 @@ import time
 import re
 from datetime import datetime
 from pathlib import Path
+
+# Prevent nested Claude Code session detection
+os.environ.pop("CLAUDECODE", None)
 from typing import Any
 
 from agent import solve_task
