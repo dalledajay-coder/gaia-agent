@@ -31,6 +31,7 @@ from tools.code_execution import execute_python
 from tools.file_tools import read_file
 from tools.math_tools import calculate
 from tools.wikipedia_tool import wikipedia_lookup, wikipedia_search
+from tools.download_tool import download_file
 
 
 SYSTEM_PROMPT = """You are an expert AI assistant solving GAIA benchmark tasks. You MUST provide precise, exact answers.
@@ -83,7 +84,7 @@ def create_gaia_tools_server():
     return create_sdk_mcp_server(
         name="gaia_tools",
         version="1.0.0",
-        tools=[web_search, web_browse, execute_python, read_file, calculate, wikipedia_lookup, wikipedia_search],
+        tools=[web_search, web_browse, execute_python, read_file, calculate, wikipedia_lookup, wikipedia_search, download_file],
     )
 
 
@@ -126,6 +127,7 @@ async def solve_task(question: str, file_path: str | None = None, max_turns: int
             "mcp__gaia_tools__calculate",
             "mcp__gaia_tools__wikipedia_lookup",
             "mcp__gaia_tools__wikipedia_search",
+            "mcp__gaia_tools__download_file",
             "Read",
             "Bash",
             "Glob",
