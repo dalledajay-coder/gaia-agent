@@ -132,8 +132,8 @@ async def web_browse(args: dict[str, Any]) -> dict[str, Any]:
         text = re.sub(r'\n{3,}', '\n\n', text)
 
         # Truncate smartly
-        if len(text) > 12000:
-            text = text[:12000] + "\n... [truncated]"
+        if len(text) > 15000:
+            text = text[:15000] + "\n... [truncated]"
 
         result = f"Content from {url}:\n\n{text}"
         if table_text:
@@ -142,4 +142,4 @@ async def web_browse(args: dict[str, Any]) -> dict[str, Any]:
         return {"content": [{"type": "text", "text": result}]}
 
     except Exception as e:
-        return {"content": [{"type": "text", "text": f"Browse error for {url}: {str(e)}. Try a different URL or search query."}]}
+        return {"content": [{"type": "text", "text": f"Browse error for {url}: {str(e)}. Try these alternatives:\n1. Use Bash: curl -sL '{url}' | head -200\n2. Try a different URL from search results\n3. Use web_search with different query terms"}]}
