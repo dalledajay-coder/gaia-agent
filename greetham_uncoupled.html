@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Project MUSE -- Verification required!</title>
+<link rel="stylesheet" type="text/css" href="/css/style_home2.css"/>
+</head>
+<body style="margin:0;padding:0;">
+
+<div style="text-align: center; padding: 30px 20px 20px;">
+  <div style="display: inline-block;">
+    <div style="float: left; padding-right: 40px;">
+      <img src="/images/muselogo_notext.png" alt="MUSE logo" style="width:100%;height:auto;">
+    </div>
+    <div style="float: left; max-width: 320px; padding-top: 16px; text-align: left;">
+
+      <h1 style="margin:0;padding: 0;font-size: 30px;">Verification required!</h1>
+
+
+
+
+
+  <p style="font-size:12px;color:#757575;line-height:1.5;margin:6px 0 14px 0;">In order to better serve you and keep this site secure,
+  please complete this challenge. If you are trying to perform text/data mining, please <a href="mailto:muse@jh.edu">contact Customer Service</a>
+  for assistance.</p>
+
+  <form name="verify_form" method="post" action="/verify">
+  <input type="hidden" name="action" value="verify">
+  <input type="hidden" name="target_url" value="/article/238372">
+  <script type="module" src=https://cdn.jsdelivr.net/npm/friendly-challenge@0.9.14/widget.module.min.js async defer></script>
+<script nomodule src=https://cdn.jsdelivr.net/npm/friendly-challenge@0.9.14/widget.min.js async defer></script>
+
+<div class="frc-captcha" id="frc-captcha-5469644" data-sitekey="FCMUE5FSPQQ6QBKQ" data-start="none" data-callback="friendlyCallback"></div>
+
+  <br/><br/>
+<!--
+  <input id="verify_submit" type="submit" value="Submit">
+-->
+  </form>
+
+  <script>
+  function friendlyCallback(solution) {
+    var u = "/verify?action=activate";
+    fetch(u).then(function(response) {
+      document.verify_form.submit()
+    });
+  }
+  </script>
+
+
+
+
+    </div>
+
+    <div style="clear: both;"></div>
+  </div>
+</div>
+
+</body>
+</html>
