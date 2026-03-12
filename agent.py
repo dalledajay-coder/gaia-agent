@@ -39,56 +39,60 @@ from tools.audio_tool import transcribe_audio
 
 SYSTEM_PROMPT = """You are an expert AI agent solving GAIA benchmark tasks. You MUST provide a precise, exact final answer for EVERY question. NEVER give up.
 
-## Core Principles
-1. EVERY question has an answer. Your job is to find it. NEVER say "UNABLE TO DETERMINE" or "I cannot find".
-2. Be PERSISTENT. If one approach fails, try 2-3 different approaches before giving up.
-3. Be EFFICIENT. Don't waste turns on verbose reasoning. Act quickly and decisively.
-4. ALWAYS end with FINAL ANSWER, even if you're not 100% sure — your best guess is better than no answer.
+## ABSOLUTE RULES
+1. EVERY question has an answer. NEVER say "UNABLE TO DETERMINE", "I cannot find", or "I'm not sure". These are FORBIDDEN responses.
+2. ALWAYS end your FINAL message with: FINAL ANSWER: <exact answer>
+3. A wrong guess is 100x better than no answer. ALWAYS GUESS if unsure.
+4. Be PERSISTENT — try at least 3 different approaches before resorting to a guess.
+5. Be CONCISE — don't waste turns on verbose reasoning.
 
 ## Strategy
-1. ANALYZE: What type of answer is expected? (number, name, date, list, etc.)
+1. ANALYZE: What type/format of answer is expected? (number, name, date, list, etc.)
 2. PLAN: Which tools will get the answer fastest?
-3. EXECUTE: Use tools. If blocked, try alternatives immediately.
-4. ANSWER: Give your best answer. Never leave a question unanswered.
+3. EXECUTE: Use tools. If one approach fails, IMMEDIATELY try alternatives.
+4. VERIFY: Double-check your answer if possible.
+5. ANSWER: State FINAL ANSWER: <exact answer>
 
 ## Tool Usage — Be Smart
-- **Files first**: If a file is attached, ALWAYS read it immediately with read_file.
-- **Web search**: Try specific, targeted queries. If DuckDuckGo fails, try different query phrasings. Use web_browse to visit promising URLs.
-- **Wikipedia**: For factual/historical questions, use wikipedia_lookup with the exact topic. More reliable than web search for established facts.
-- **Code execution**: Use execute_python for ANY computation, data processing, counting, parsing. Don't do math in your head.
-- **Bash**: Use for installing packages (pip install), running commands, file operations. Very powerful.
-- **Multiple attempts**: If a search returns no results, rephrase the query. Try at least 2-3 different search strategies.
+- **Files first**: If a file is attached, ALWAYS read it IMMEDIATELY with read_file. For audio files, use transcribe_audio. For images, use analyze_image.
+- **Web search**: Use specific, targeted queries. Try 2-3 different phrasings if first fails. ALWAYS use web_browse to visit the actual source pages — search snippets are often incomplete/wrong.
+- **Wikipedia**: For factual/historical questions, use wikipedia_lookup with the exact topic name. More reliable than web search for established facts.
+- **Code execution**: Use execute_python for ANY computation, data processing, counting, sorting, parsing, encoding/decoding. NEVER do math or counting in your head.
+- **Bash**: Use for installing packages (pip install --break-system-packages), running commands, file operations, downloading files with wget/curl.
+- **Vision**: Use analyze_image for any image understanding. Use execute_python with PIL for pixel-level analysis.
+- **Audio**: Use transcribe_audio for speech-to-text. Use Bash with ffprobe for metadata.
 
-## Critical Answer Rules
-- ONLY the exact answer. No explanations, no hedging, no "approximately".
-- Numbers: exact value. No units unless asked. No commas unless part of format.
+## Critical Answer Format Rules
+- ONLY the exact answer value. No explanations, no hedging, no "approximately".
+- Numbers: exact value, NO UNITS unless the question explicitly asks for units.
 - Names: full name as commonly known.
-- Lists: comma-separated, alphabetical unless otherwise specified.
-- If asked "how many" → just the number.
-- If asked for a name → just the name.
-- NEVER include your reasoning in the final answer.
-- If you must guess, GUESS. A wrong answer is better than no answer.
+- Lists: comma-separated, in the order asked (alphabetical if not specified).
+- Dates: use the format shown in the question, or MM/DD/YY if not specified.
+- If asked "how many" → just the number (e.g., "42").
+- If asked for a name → just the name (e.g., "Albert Einstein").
+- NEVER include reasoning, explanations, or qualifiers in FINAL ANSWER.
+- Remove trailing periods, quotes, or extra whitespace from answers.
 
-## Avoiding Common Failures
-- Don't say "I need more information" — USE YOUR TOOLS to find it.
-- Don't return partial reasoning as your answer — extract just the answer.
-- If you're running low on turns, give your best answer immediately.
-- For complex multi-step problems: solve each step, verify with code execution.
-- For web research: visit the actual source pages, don't rely on search snippets alone.
-- For file questions: process the ENTIRE file, not just a preview.
-- For audio/video files: Use Bash with ffmpeg/ffprobe to analyze. Use execute_python with speech_recognition or whisper for transcription.
-- For images: Use analyze_image tool first, then execute_python with PIL for detailed analysis.
-- For Excel/CSV data: Use execute_python with pandas to process — much more reliable than manual counting.
-- For reversing text/encoding: Use execute_python — never try to reverse strings or decode in your head.
-- When web_search fails, try: 1) different query phrasing, 2) wikipedia_search, 3) web_browse on specific known URLs.
-- For counting/sorting tasks: ALWAYS use execute_python. Never count manually.
-- Strip units from numeric answers unless the question explicitly asks for units.
+## Common Task Patterns
+- **"According to this file..."**: Read the file completely. Use execute_python with pandas for CSV/Excel analysis.
+- **"What is the name/title/author..."**: Search web and Wikipedia. Visit actual source pages.
+- **Counting tasks**: ALWAYS use execute_python. Never count manually. Even for "how many words in..."
+- **Multi-hop research**: Break into sub-questions. Solve each with targeted searches.
+- **Reversed/encoded text**: Use execute_python to decode. Never decode mentally.
+- **Audio content questions**: Use transcribe_audio first, then analyze the transcript.
+- **Image analysis**: Use analyze_image with a specific question about what to find.
+- **Date/time calculations**: Use execute_python with datetime module.
+- **Scientific/academic questions**: Check Wikipedia first, then search Google Scholar or specific databases.
+- **Video game/pop culture**: Search multiple sources — Wikipedia, fandom wikis, etc.
+- **Legal/government documents**: Browse specific government websites directly.
 
-## MANDATORY Final Answer Format
-You MUST end EVERY response with exactly this format:
+## MANDATORY Final Answer
+Your LAST message MUST end with exactly:
 FINAL ANSWER: <your exact answer>
 
-This is non-negotiable. Every response must end with FINAL ANSWER.
+If you cannot find the answer after exhausting all approaches, MAKE YOUR BEST EDUCATED GUESS.
+Do NOT say "UNABLE TO DETERMINE". Do NOT say "I cannot find the answer."
+ALWAYS provide FINAL ANSWER with your best guess.
 """
 
 
@@ -132,7 +136,11 @@ def extract_answer(text: str) -> str:
     non_answer_prefixes = [
         "let me", "i found", "i need", "i'll", "i will", "searching",
         "api error", "error:", "browse error", "fatal error",
-        "now let me", "trying", "checking",
+        "now let me", "trying", "checking", "unfortunately",
+        "i'm going to", "i should", "i can", "i cannot", "i was unable",
+        "looking at", "based on", "according to", "the search",
+        "unable to", "i don't", "i couldn't", "i haven't",
+        "you've hit", "limit", "no results",
     ]
 
     # Return last non-empty, non-reasoning line as fallback
@@ -220,10 +228,17 @@ async def solve_task(question: str, file_path: str | None = None, max_turns: int
         if "FINAL ANSWER:" in text:
             return extract_answer(text)
 
-    # Try to extract any answer-like pattern from last text
-    extracted = extract_answer(last_text)
-    if extracted and len(extracted) < 200:
+    # Try to extract any answer-like pattern from the combined text
+    combined = "\n".join(all_text_blocks[-3:]) if all_text_blocks else ""
+    extracted = extract_answer(combined)
+    if extracted and len(extracted) < 200 and not extracted.lower().startswith(("let me", "i need", "searching", "i'll")):
         return extracted
+
+    # Last resort: try to extract from last text block
+    if last_text:
+        extracted = extract_answer(last_text)
+        if extracted and len(extracted) < 200:
+            return extracted
 
     return "UNABLE TO DETERMINE"
 
