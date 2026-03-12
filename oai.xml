@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<?xml-stylesheet type="text/xsl" href="https://scholarworks.iu.edu/journals/lib/pkp/xml/oai2.xsl" ?>
-<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://www.openarchives.org/OAI/2.0/
-		http://www.openarchives.org/OAI/2.0/OAI-PMH.xsd">
-	<responseDate>2026-03-12T02:40:29Z</responseDate>
-	<request verb="ListRecords" metadataPrefix="oai_dc" from="2006-01-01" until="2010-01-01">https://scholarworks.iu.edu/journals/index.php/textual/oai</request>
-	<error code="noRecordsMatch">No matching records in this repository</error></OAI-PMH>

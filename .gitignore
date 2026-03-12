@@ -10,3 +10,8 @@ data/
 dist/
 build/
 .pytest_cache/
+*.html
+*.pdf
+*.jpg
+*.xml
+headers.txt
