@@ -1,0 +1,10 @@
+{"task_id": "h01", "predicted": "479001600", "gold": "479001600", "correct": true, "time": 3.0}
+{"task_id": "h02", "predicted": "2586", "gold": "2586", "correct": true, "time": 3.9}
+{"task_id": "h03", "predicted": "610", "gold": "610", "correct": true, "time": 4.4}
+{"task_id": "h04", "predicted": "Marie Curie, 1903", "gold": "Marie Curie, 1903", "correct": true, "time": 3.2}
+{"task_id": "h05", "predicted": "4.2", "gold": "4.2", "correct": true, "time": 11.7}
+{"task_id": "h06", "predicted": "Burj Khalifa, 828 meters", "gold": "Burj Khalifa, 828", "correct": true, "time": 3.3}
+{"task_id": "h07", "predicted": "8", "gold": "8", "correct": true, "time": 3.2}
+{"task_id": "h08", "predicted": "gold", "gold": "Gold", "correct": true, "time": 4.1}
+{"task_id": "h09", "predicted": "Alaska, California, Hawaii, Oregon, Washington", "gold": "Alaska, California, Hawaii, Oregon, Washington", "correct": true, "time": 9.8}
+{"task_id": "h10", "predicted": "14", "gold": "14", "correct": true, "time": 43.7}

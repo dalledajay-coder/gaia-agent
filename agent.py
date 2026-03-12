@@ -143,20 +143,22 @@ async def solve_task(question: str, file_path: str | None = None, max_turns: int
     )
 
     last_text = ""
+    found_answer = ""
     try:
         async for message in query(prompt=prompt, options=options):
             if isinstance(message, AssistantMessage):
                 for block in message.content:
                     if isinstance(block, TextBlock):
                         last_text = block.text
-                        if "FINAL ANSWER:" in block.text:
-                            # Extract answer immediately
-                            answer = block.text.split("FINAL ANSWER:")[-1].strip()
-                            return answer
+                        if "FINAL ANSWER:" in block.text and not found_answer:
+                            found_answer = block.text.split("FINAL ANSWER:")[-1].strip()
             elif isinstance(message, ResultMessage):
-                break
+                pass  # Let loop end naturally to avoid async cleanup issues
     except Exception as e:
         print(f"Agent error: {e}", file=sys.stderr)
+
+    if found_answer:
+        return found_answer
 
     # Try to extract answer from last text
     if "FINAL ANSWER:" in last_text:

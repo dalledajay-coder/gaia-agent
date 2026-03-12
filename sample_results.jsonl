@@ -1,0 +1,10 @@
+{"task_id": "s01", "predicted": "Au", "gold": "Au", "correct": true, "time": 3.5}
+{"task_id": "s02", "predicted": "12", "gold": "12", "correct": true, "time": 5.0}
+{"task_id": "s03", "predicted": "42", "gold": "42", "correct": true, "time": 2.8}
+{"task_id": "s04", "predicted": "Leonardo da Vinci", "gold": "Leonardo da Vinci", "correct": true, "time": 2.9}
+{"task_id": "s05", "predicted": "Jupiter", "gold": "Jupiter", "correct": true, "time": 3.0}
+{"task_id": "s06", "predicted": "1945", "gold": "1945", "correct": true, "time": 4.9}
+{"task_id": "s07", "predicted": "212", "gold": "212", "correct": true, "time": 3.7}
+{"task_id": "s08", "predicted": "46", "gold": "46", "correct": true, "time": 3.3}
+{"task_id": "s09", "predicted": "129", "gold": "129", "correct": true, "time": 4.6}
+{"task_id": "s10", "predicted": "27", "gold": "27", "correct": true, "time": 3.2}
