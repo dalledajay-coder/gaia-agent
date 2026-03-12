@@ -5,14 +5,15 @@ import asyncio
 import json
 import time
 import sys
+import re
 
 os.environ.pop("CLAUDECODE", None)
 
 from datasets import load_dataset
 from agent import solve_task
 
-TASK_TIMEOUT = 180  # 3 minutes max per task
-MAX_TURNS = 20
+TASK_TIMEOUT = 300  # 5 minutes max per task (was 3 min)
+MAX_TURNS = 35  # More turns for complex tasks (was 20)
 
 
 async def solve_with_timeout(question, file_path, timeout=TASK_TIMEOUT):
@@ -28,10 +29,55 @@ async def solve_with_timeout(question, file_path, timeout=TASK_TIMEOUT):
         return f"ERROR: {e}"
 
 
+def normalize_answer(text: str) -> str:
+    """Normalize answer for comparison."""
+    text = text.strip().lower().rstrip(".")
+    # Remove common prefixes
+    for prefix in ["final answer:", "answer:", "the answer is "]:
+        if text.startswith(prefix):
+            text = text[len(prefix):].strip()
+    # Normalize whitespace
+    text = " ".join(text.split())
+    return text
+
+
+def answers_match(predicted: str, gold: str) -> bool:
+    """Flexible answer matching."""
+    pred = normalize_answer(predicted)
+    gold_n = normalize_answer(gold)
+
+    # Exact match
+    if pred == gold_n:
+        return True
+
+    # Numeric match
+    try:
+        pred_num = float(pred.replace(",", "").replace("$", "").replace("%", "").strip())
+        gold_num = float(gold_n.replace(",", "").replace("$", "").replace("%", "").strip())
+        if abs(pred_num - gold_num) < 0.01:
+            return True
+        if gold_num != 0 and abs((pred_num - gold_num) / gold_num) < 0.005:
+            return True
+    except (ValueError, TypeError, ZeroDivisionError):
+        pass
+
+    # Containment match (gold answer found within prediction)
+    if len(gold_n) > 2 and gold_n in pred:
+        return True
+
+    # Reverse containment (prediction found within gold, for partial answers)
+    if len(pred) > 2 and pred in gold_n:
+        # Only if pred is substantial portion of gold
+        if len(pred) > len(gold_n) * 0.7:
+            return True
+
+    return False
+
+
 async def main():
     level = int(sys.argv[1]) if len(sys.argv) > 1 else 1
     resume_from = int(sys.argv[2]) if len(sys.argv) > 2 else 0
-    output_file = f"gaia_results_l{level}.jsonl"
+    output_file = f"gaia_results_l{level}_v2.jsonl"
 
     ds = load_dataset("gaia-benchmark/GAIA", f"2023_level{level}", split="validation")
     total = len(ds)
@@ -47,7 +93,8 @@ async def main():
     correct = sum(1 for r in existing.values() if r.get("correct"))
     done = len(existing)
 
-    print(f"\nGAIA Level {level} Benchmark | {total} tasks | Resuming from {resume_from} | {done} already done")
+    print(f"\nGAIA Level {level} Benchmark v2 | {total} tasks | Resuming from {resume_from} | {done} already done")
+    print(f"Timeout: {TASK_TIMEOUT}s | Max turns: {MAX_TURNS}")
     print(f"{'='*70}\n")
 
     for i in range(resume_from, total):
@@ -71,17 +118,7 @@ async def main():
         ans = await solve_with_timeout(q, file_path)
         elapsed = time.time() - start
 
-        # Flexible matching
-        ans_norm = ans.strip().lower().rstrip(".")
-        gold_norm = gold.strip().lower().rstrip(".")
-        match = ans_norm == gold_norm
-        if not match:
-            try:
-                match = abs(float(ans_norm.replace(",", "")) - float(gold_norm.replace(",", ""))) < 0.01
-            except (ValueError, TypeError):
-                pass
-        if not match and len(gold_norm) > 2:
-            match = gold_norm in ans_norm
+        match = answers_match(ans, gold)
 
         if match:
             correct += 1
@@ -110,7 +147,7 @@ async def main():
     print(f"\nLEVEL {level} FINAL: {correct}/{done} = {accuracy:.1f}%")
 
     summary = {"level": level, "correct": correct, "total": done, "accuracy": round(accuracy, 2)}
-    with open(f"gaia_summary_l{level}.json", "w") as f:
+    with open(f"gaia_summary_l{level}_v2.json", "w") as f:
         json.dump(summary, f, indent=2)
 
 

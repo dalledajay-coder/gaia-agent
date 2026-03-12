@@ -8,6 +8,7 @@ Uses web search, code execution, file processing, and mathematical reasoning.
 import asyncio
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -35,50 +36,51 @@ from tools.download_tool import download_file
 from tools.vision_tool import analyze_image
 
 
-SYSTEM_PROMPT = """You are an expert AI assistant solving GAIA benchmark tasks. You MUST provide precise, exact answers.
+SYSTEM_PROMPT = """You are an expert AI agent solving GAIA benchmark tasks. You MUST provide a precise, exact final answer for EVERY question. NEVER give up.
+
+## Core Principles
+1. EVERY question has an answer. Your job is to find it. NEVER say "UNABLE TO DETERMINE" or "I cannot find".
+2. Be PERSISTENT. If one approach fails, try 2-3 different approaches before giving up.
+3. Be EFFICIENT. Don't waste turns on verbose reasoning. Act quickly and decisively.
+4. ALWAYS end with FINAL ANSWER, even if you're not 100% sure — your best guess is better than no answer.
 
 ## Strategy
-1. ANALYZE the question carefully. Identify what type of answer is expected (number, name, date, list, etc.).
-2. PLAN your approach: what tools do you need? What information do you need to find?
-3. EXECUTE: Use tools systematically. If one approach fails, try another.
-4. VERIFY: Double-check your answer before submitting.
+1. ANALYZE: What type of answer is expected? (number, name, date, list, etc.)
+2. PLAN: Which tools will get the answer fastest?
+3. EXECUTE: Use tools. If blocked, try alternatives immediately.
+4. ANSWER: Give your best answer. Never leave a question unanswered.
 
-## Tool Usage Guidelines
-- **Files**: If a file is mentioned or attached, ALWAYS read it first with read_file or Read tool.
-- **Web Search**: Use web_search for factual questions, current events, specific data lookups. Try multiple queries if first attempt fails.
-- **Web Browse**: Use web_browse to get full content from specific URLs found via search.
-- **Code Execution**: Use execute_python for calculations, data processing, parsing structured data, counting, sorting.
-- **Calculate**: Use for simple math expressions. For complex computations, prefer execute_python.
-- **Image Analysis**: Use analyze_image for questions about images, charts, diagrams, or text in images.
-- **Download**: Use download_file to fetch files from URLs.
-- **Bash**: Use for file system operations, running system commands, installing packages.
+## Tool Usage — Be Smart
+- **Files first**: If a file is attached, ALWAYS read it immediately with read_file.
+- **Web search**: Try specific, targeted queries. If DuckDuckGo fails, try different query phrasings. Use web_browse to visit promising URLs.
+- **Wikipedia**: For factual/historical questions, use wikipedia_lookup with the exact topic. More reliable than web search for established facts.
+- **Code execution**: Use execute_python for ANY computation, data processing, counting, parsing. Don't do math in your head.
+- **Bash**: Use for installing packages (pip install), running commands, file operations. Very powerful.
+- **Multiple attempts**: If a search returns no results, rephrase the query. Try at least 2-3 different search strategies.
 
-## Answer Rules
-- Give ONLY the exact answer. No explanations, no qualifications, no "approximately".
-- Numbers: exact value, no units unless the question asks for units. No commas in numbers unless they're part of the answer format.
-- Names: full name as commonly known (e.g., "Albert Einstein" not "A. Einstein").
-- Dates: use the format the question specifies, or YYYY-MM-DD if unspecified.
-- Lists: comma-separated unless otherwise specified.
-- If the question asks "how many", give just the number.
-- If the question asks for a name, give just the name.
-- Round numbers only if the question asks you to round.
+## Critical Answer Rules
+- ONLY the exact answer. No explanations, no hedging, no "approximately".
+- Numbers: exact value. No units unless asked. No commas unless part of format.
+- Names: full name as commonly known.
+- Lists: comma-separated, alphabetical unless otherwise specified.
+- If asked "how many" → just the number.
+- If asked for a name → just the name.
+- NEVER include your reasoning in the final answer.
+- If you must guess, GUESS. A wrong answer is better than no answer.
 
-## Common Pitfalls to Avoid
-- Don't guess. If you can't find the answer, search more broadly.
-- Don't confuse similar entities (e.g., cities with same name in different countries).
-- Read the ENTIRE question - don't miss qualifiers like "as of 2023" or "in millions".
-- For Wikipedia questions, browse the actual Wikipedia page rather than relying on search snippets.
-- For file-based questions, make sure you process ALL the data, not just a sample.
+## Avoiding Common Failures
+- Don't say "I need more information" — USE YOUR TOOLS to find it.
+- Don't return partial reasoning as your answer — extract just the answer.
+- If you're running low on turns, give your best answer immediately.
+- For complex multi-step problems: solve each step, verify with code execution.
+- For web research: visit the actual source pages, don't rely on search snippets alone.
+- For file questions: process the ENTIRE file, not just a preview.
 
-## Final Answer Format
-End your response with exactly:
-FINAL ANSWER: <your answer here>
+## MANDATORY Final Answer Format
+You MUST end EVERY response with exactly this format:
+FINAL ANSWER: <your exact answer>
 
-Examples:
-FINAL ANSWER: 42
-FINAL ANSWER: Marie Curie
-FINAL ANSWER: 2024-01-15
-FINAL ANSWER: hydrogen, helium, lithium
+This is non-negotiable. Every response must end with FINAL ANSWER.
 """
 
 
@@ -91,30 +93,50 @@ def create_gaia_tools_server():
     )
 
 
-async def solve_task(question: str, file_path: str | None = None, max_turns: int = 30) -> str:
-    """Solve a single GAIA benchmark task.
+def extract_answer(text: str) -> str:
+    """Extract the final answer from agent text, handling various formats."""
+    if not text:
+        return ""
 
-    Args:
-        question: The task question text
-        file_path: Optional path to an attached file
-        max_turns: Maximum number of agent turns
+    # Try FINAL ANSWER: pattern
+    if "FINAL ANSWER:" in text:
+        answer = text.split("FINAL ANSWER:")[-1].strip()
+        # Clean up: remove trailing explanation
+        lines = answer.split("\n")
+        return lines[0].strip()
 
-    Returns:
-        The agent's final answer string
-    """
+    # Try "The answer is" pattern
+    patterns = [
+        r"(?:the answer is|answer:)\s*(.+?)(?:\.|$)",
+        r"(?:result is|equals)\s*(.+?)(?:\.|$)",
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+
+    # Return last non-empty line as fallback
+    lines = [l.strip() for l in text.strip().split("\n") if l.strip()]
+    return lines[-1] if lines else ""
+
+
+async def solve_task(question: str, file_path: str | None = None, max_turns: int = 35) -> str:
+    """Solve a single GAIA benchmark task."""
     gaia_server = create_gaia_tools_server()
 
     # Build the prompt
     prompt_parts = []
     if file_path and os.path.exists(file_path):
+        ext = os.path.splitext(file_path)[1].lower()
         prompt_parts.append(
-            f"An attachment file is provided at: {file_path}\n"
-            f"You MUST read this file using the read_file tool before answering.\n\n"
+            f"IMPORTANT: A file is attached at: {file_path} (type: {ext})\n"
+            f"You MUST read this file using the read_file tool FIRST before doing anything else.\n\n"
         )
     prompt_parts.append(f"Question: {question}\n\n")
     prompt_parts.append(
-        "Think step by step. Use tools as needed. "
-        "End your response with 'FINAL ANSWER: <your exact answer>'"
+        "Solve this step by step. Use tools as needed. "
+        "You MUST end with 'FINAL ANSWER: <your exact answer>'. "
+        "Never give up — always provide your best answer."
     )
 
     prompt = "".join(prompt_parts)
@@ -133,6 +155,7 @@ async def solve_task(question: str, file_path: str | None = None, max_turns: int
             "mcp__gaia_tools__download_file",
             "mcp__gaia_tools__analyze_image",
             "Read",
+            "Write",
             "Bash",
             "Glob",
             "Grep",
@@ -144,14 +167,17 @@ async def solve_task(question: str, file_path: str | None = None, max_turns: int
 
     last_text = ""
     found_answer = ""
+    all_text_blocks = []
+
     try:
         async for message in query(prompt=prompt, options=options):
             if isinstance(message, AssistantMessage):
                 for block in message.content:
                     if isinstance(block, TextBlock):
                         last_text = block.text
+                        all_text_blocks.append(block.text)
                         if "FINAL ANSWER:" in block.text and not found_answer:
-                            found_answer = block.text.split("FINAL ANSWER:")[-1].strip()
+                            found_answer = extract_answer(block.text)
             elif isinstance(message, ResultMessage):
                 pass  # Let loop end naturally to avoid async cleanup issues
     except Exception as e:
@@ -160,12 +186,17 @@ async def solve_task(question: str, file_path: str | None = None, max_turns: int
     if found_answer:
         return found_answer
 
-    # Try to extract answer from last text
-    if "FINAL ANSWER:" in last_text:
-        return last_text.split("FINAL ANSWER:")[-1].strip()
+    # Try to extract answer from all text blocks (agent may have answered earlier)
+    for text in reversed(all_text_blocks):
+        if "FINAL ANSWER:" in text:
+            return extract_answer(text)
 
-    # Return last text as fallback
-    return last_text.strip().split("\n")[-1].strip() if last_text else "UNABLE TO DETERMINE"
+    # Try to extract any answer-like pattern from last text
+    extracted = extract_answer(last_text)
+    if extracted and len(extracted) < 200:
+        return extracted
+
+    return "UNABLE TO DETERMINE"
 
 
 async def solve_task_with_retry(question: str, file_path: str | None = None, max_retries: int = 2) -> str:
@@ -173,7 +204,8 @@ async def solve_task_with_retry(question: str, file_path: str | None = None, max
     last_answer = ""
     for attempt in range(max_retries):
         try:
-            answer = await solve_task(question, file_path, max_turns=25 + attempt * 5)
+            turns = 30 + attempt * 10
+            answer = await solve_task(question, file_path, max_turns=turns)
             if answer and answer != "UNABLE TO DETERMINE":
                 return answer
             last_answer = answer
