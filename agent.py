@@ -34,6 +34,7 @@ from tools.math_tools import calculate
 from tools.wikipedia_tool import wikipedia_lookup, wikipedia_search
 from tools.download_tool import download_file
 from tools.vision_tool import analyze_image
+from tools.audio_tool import transcribe_audio
 
 
 SYSTEM_PROMPT = """You are an expert AI agent solving GAIA benchmark tasks. You MUST provide a precise, exact final answer for EVERY question. NEVER give up.
@@ -75,6 +76,13 @@ SYSTEM_PROMPT = """You are an expert AI agent solving GAIA benchmark tasks. You 
 - For complex multi-step problems: solve each step, verify with code execution.
 - For web research: visit the actual source pages, don't rely on search snippets alone.
 - For file questions: process the ENTIRE file, not just a preview.
+- For audio/video files: Use Bash with ffmpeg/ffprobe to analyze. Use execute_python with speech_recognition or whisper for transcription.
+- For images: Use analyze_image tool first, then execute_python with PIL for detailed analysis.
+- For Excel/CSV data: Use execute_python with pandas to process — much more reliable than manual counting.
+- For reversing text/encoding: Use execute_python — never try to reverse strings or decode in your head.
+- When web_search fails, try: 1) different query phrasing, 2) wikipedia_search, 3) web_browse on specific known URLs.
+- For counting/sorting tasks: ALWAYS use execute_python. Never count manually.
+- Strip units from numeric answers unless the question explicitly asks for units.
 
 ## MANDATORY Final Answer Format
 You MUST end EVERY response with exactly this format:
@@ -89,7 +97,7 @@ def create_gaia_tools_server():
     return create_sdk_mcp_server(
         name="gaia_tools",
         version="1.0.0",
-        tools=[web_search, web_browse, execute_python, read_file, calculate, wikipedia_lookup, wikipedia_search, download_file, analyze_image],
+        tools=[web_search, web_browse, execute_python, read_file, calculate, wikipedia_lookup, wikipedia_search, download_file, analyze_image, transcribe_audio],
     )
 
 
@@ -103,20 +111,40 @@ def extract_answer(text: str) -> str:
         answer = text.split("FINAL ANSWER:")[-1].strip()
         # Clean up: remove trailing explanation
         lines = answer.split("\n")
-        return lines[0].strip()
+        answer = lines[0].strip()
+        # Remove surrounding quotes if present
+        if len(answer) > 2 and answer[0] in ('"', "'") and answer[-1] == answer[0]:
+            answer = answer[1:-1]
+        return answer
 
     # Try "The answer is" pattern
     patterns = [
-        r"(?:the answer is|answer:)\s*(.+?)(?:\.|$)",
+        r"(?:the (?:final )?answer is)[:\s]*(.+?)(?:\n|$)",
+        r"(?:^answer:)\s*(.+?)(?:\n|$)",
         r"(?:result is|equals)\s*(.+?)(?:\.|$)",
     ]
     for pat in patterns:
-        m = re.search(pat, text, re.IGNORECASE)
+        m = re.search(pat, text, re.IGNORECASE | re.MULTILINE)
         if m:
             return m.group(1).strip()
 
-    # Return last non-empty line as fallback
+    # Filter out non-answer lines (reasoning, errors, tool calls)
+    non_answer_prefixes = [
+        "let me", "i found", "i need", "i'll", "i will", "searching",
+        "api error", "error:", "browse error", "fatal error",
+        "now let me", "trying", "checking",
+    ]
+
+    # Return last non-empty, non-reasoning line as fallback
     lines = [l.strip() for l in text.strip().split("\n") if l.strip()]
+    for line in reversed(lines):
+        lower = line.lower()
+        if any(lower.startswith(p) for p in non_answer_prefixes):
+            continue
+        if len(line) > 200:  # Too long to be a concise answer
+            continue
+        return line
+
     return lines[-1] if lines else ""
 
 
@@ -154,6 +182,7 @@ async def solve_task(question: str, file_path: str | None = None, max_turns: int
             "mcp__gaia_tools__wikipedia_search",
             "mcp__gaia_tools__download_file",
             "mcp__gaia_tools__analyze_image",
+            "mcp__gaia_tools__transcribe_audio",
             "Read",
             "Write",
             "Bash",

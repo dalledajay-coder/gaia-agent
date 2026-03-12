@@ -191,8 +191,8 @@ async def _describe_image(file_path: str) -> dict[str, Any]:
     ext = os.path.splitext(file_path)[1].lower()
 
     info = f"Image file: {file_path} ({size} bytes, format: {ext})\n\n"
-    info += "To analyze this image, use execute_python with PIL/Pillow to inspect properties, "
-    info += "or use the Bash tool to run image analysis commands.\n"
+    info += "IMPORTANT: Use the analyze_image tool to analyze this image with Claude vision.\n"
+    info += "You can also use execute_python with PIL/Pillow for programmatic analysis.\n"
 
     # Try to get image dimensions
     try:
@@ -229,8 +229,8 @@ async def _process_audio(file_path: str) -> dict[str, Any]:
     ext = os.path.splitext(file_path)[1].lower()
 
     info = f"Audio/video file: {file_path} ({size} bytes, format: {ext})\n\n"
-    info += "To process this audio, use execute_python with appropriate libraries.\n"
-    info += "You can use the Bash tool to run ffmpeg commands for conversion.\n"
+    info += "IMPORTANT: Use the transcribe_audio tool to get a transcript of this audio.\n"
+    info += "You can also use the Bash tool to run ffmpeg/ffprobe commands for analysis.\n"
 
     # Try to get duration
     try:

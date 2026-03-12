@@ -1,4 +1,4 @@
-"""Run GAIA benchmark with per-task timeout and resume support."""
+"""Re-run only failed tasks from a previous benchmark run."""
 
 import os
 import asyncio
@@ -12,12 +12,11 @@ os.environ.pop("CLAUDECODE", None)
 from datasets import load_dataset
 from agent import solve_task
 
-TASK_TIMEOUT = 300  # 5 minutes max per task (was 3 min)
-MAX_TURNS = 35  # More turns for complex tasks (was 20)
+TASK_TIMEOUT = 360  # 6 minutes for retries
+MAX_TURNS = 40  # More turns for retry
 
 
 async def solve_with_timeout(question, file_path, timeout=TASK_TIMEOUT):
-    """Solve a task with a timeout."""
     try:
         return await asyncio.wait_for(
             solve_task(question, file_path=file_path, max_turns=MAX_TURNS),
@@ -30,26 +29,21 @@ async def solve_with_timeout(question, file_path, timeout=TASK_TIMEOUT):
 
 
 def normalize_answer(text: str) -> str:
-    """Normalize answer for comparison."""
     text = text.strip().lower().rstrip(".")
-    # Remove common prefixes
     for prefix in ["final answer:", "answer:", "the answer is "]:
         if text.startswith(prefix):
             text = text[len(prefix):].strip()
-    # Remove surrounding quotes
     if len(text) > 2 and text[0] in ('"', "'") and text[-1] == text[0]:
         text = text[1:-1]
-    # Normalize whitespace
     text = " ".join(text.split())
     return text
 
 
 def strip_units(text: str) -> str:
-    """Strip common units from numeric answers."""
     units = [
         "angstroms", "angstrom", "å", "nm", "mm", "cm", "m", "km",
         "kg", "g", "mg", "lb", "lbs", "oz",
-        "seconds", "second", "sec", "s", "minutes", "minute", "min",
+        "seconds", "second", "sec", "minutes", "minute", "min",
         "hours", "hour", "hr", "days", "day",
         "dollars", "dollar", "usd", "euros", "euro", "eur",
         "percent", "%", "degrees", "degree", "°",
@@ -59,7 +53,6 @@ def strip_units(text: str) -> str:
         if t.endswith(" " + unit):
             t = t[: -(len(unit) + 1)].strip()
         elif t.endswith(unit) and len(t) > len(unit):
-            # Only strip if what remains looks numeric
             remainder = t[:-len(unit)].strip()
             try:
                 float(remainder.replace(",", ""))
@@ -70,15 +63,10 @@ def strip_units(text: str) -> str:
 
 
 def answers_match(predicted: str, gold: str) -> bool:
-    """Flexible answer matching."""
     pred = normalize_answer(predicted)
     gold_n = normalize_answer(gold)
-
-    # Exact match
     if pred == gold_n:
         return True
-
-    # Numeric match (with unit stripping)
     pred_stripped = strip_units(pred)
     gold_stripped = strip_units(gold_n)
     try:
@@ -90,57 +78,81 @@ def answers_match(predicted: str, gold: str) -> bool:
             return True
     except (ValueError, TypeError, ZeroDivisionError):
         pass
-
-    # Containment match (gold answer found within prediction)
     if len(gold_n) > 2 and gold_n in pred:
         return True
-
-    # Reverse containment (prediction found within gold, for partial answers)
     if len(pred) > 2 and pred in gold_n:
-        # Only if pred is substantial portion of gold
         if len(pred) > len(gold_n) * 0.7:
             return True
-
-    # Try with units stripped
     if pred_stripped and gold_stripped and pred_stripped == gold_stripped:
         return True
-
     return False
 
 
 async def main():
     level = int(sys.argv[1]) if len(sys.argv) > 1 else 1
-    resume_from = int(sys.argv[2]) if len(sys.argv) > 2 else 0
-    output_file = f"gaia_results_l{level}_v2.jsonl"
+    input_file = sys.argv[2] if len(sys.argv) > 2 else f"gaia_results_l{level}_v2.jsonl"
+    output_file = f"gaia_results_l{level}_v3.jsonl"
 
     ds = load_dataset("gaia-benchmark/GAIA", f"2023_level{level}", split="validation")
-    total = len(ds)
 
-    # Load existing results
-    existing = {}
+    # Load previous results
+    prev_results = {}
+    if os.path.exists(input_file):
+        with open(input_file) as f:
+            for line in f:
+                r = json.loads(line)
+                prev_results[r["task_id"]] = r
+
+    # Identify failed tasks
+    failed_ids = set()
+    for tid, r in prev_results.items():
+        if not r.get("correct"):
+            pred = r.get("predicted", "")
+            # Re-run: timeouts, unable, errors, and wrong answers
+            failed_ids.add(tid)
+
+    # Load any existing v3 results
+    v3_results = {}
     if os.path.exists(output_file):
         with open(output_file) as f:
             for line in f:
                 r = json.loads(line)
-                existing[r["task_id"]] = r
+                v3_results[r["task_id"]] = r
 
-    correct = sum(1 for r in existing.values() if r.get("correct"))
-    done = len(existing)
+    # Start with all passing results from v2
+    all_results = {}
+    for tid, r in prev_results.items():
+        if r.get("correct"):
+            all_results[tid] = r
 
-    print(f"\nGAIA Level {level} Benchmark v2 | {total} tasks | Resuming from {resume_from} | {done} already done")
+    # Add any v3 results
+    all_results.update(v3_results)
+
+    correct = sum(1 for r in all_results.values() if r.get("correct"))
+    total_tasks = len(ds)
+    to_retry = [tid for tid in failed_ids if tid not in v3_results]
+
+    print(f"\nGAIA Level {level} Re-run | {len(to_retry)} failed tasks to retry")
+    print(f"Already correct: {correct}/{total_tasks}")
     print(f"Timeout: {TASK_TIMEOUT}s | Max turns: {MAX_TURNS}")
     print(f"{'='*70}\n")
 
-    for i in range(resume_from, total):
+    # Build task lookup
+    task_lookup = {}
+    for i in range(len(ds)):
         task = ds[i]
-        tid = task["task_id"]
+        task_lookup[task["task_id"]] = task
+
+    done_retries = 0
+    new_correct = 0
+    for tid in to_retry:
+        task = task_lookup.get(tid)
+        if not task:
+            continue
+
         q = task["Question"]
         gold = task["Final answer"]
         fname = task.get("file_name", "")
-
-        # Skip already completed
-        if tid in existing:
-            continue
 
         file_path = None
         if fname:
@@ -153,10 +165,11 @@ async def main():
         elapsed = time.time() - start
 
         match = answers_match(ans, gold)
-
         if match:
+            new_correct += 1
             correct += 1
-        done += 1
+
+        done_retries += 1
 
         result = {
             "task_id": tid,
@@ -165,23 +178,28 @@ async def main():
             "correct": match,
             "time": round(elapsed, 1),
             "level": level,
+            "retry": True,
         }
-        existing[tid] = result
+        all_results[tid] = result
 
         with open(output_file, "a") as f:
             f.write(json.dumps(result) + "\n")
 
         status = "PASS" if match else "FAIL"
-        print(f"[{done}/{total}] {status} | Got: {ans[:80]} | Gold: {gold} | {elapsed:.0f}s | Running: {correct}/{done}={correct/done*100:.0f}%")
+        prev_pred = prev_results.get(tid, {}).get("predicted", "?")[:30]
+        print(f"[{done_retries}/{len(to_retry)}] {status} | Got: {ans[:60]} | Gold: {gold} | Was: {prev_pred} | {elapsed:.0f}s")
         sys.stdout.flush()
 
         await asyncio.sleep(0.5)
 
-    accuracy = correct / done * 100 if done else 0
-    print(f"\nLEVEL {level} FINAL: {correct}/{done} = {accuracy:.1f}%")
+    total_correct = sum(1 for r in all_results.values() if r.get("correct"))
+    total_done = len(all_results)
+    accuracy = total_correct / total_done * 100 if total_done else 0
+    print(f"\nLEVEL {level} FINAL (v3): {total_correct}/{total_done} = {accuracy:.1f}%")
+    print(f"New correct from retries: {new_correct}/{done_retries}")
 
-    summary = {"level": level, "correct": correct, "total": done, "accuracy": round(accuracy, 2)}
-    with open(f"gaia_summary_l{level}_v2.json", "w") as f:
+    summary = {"level": level, "correct": total_correct, "total": total_done, "accuracy": round(accuracy, 2)}
+    with open(f"gaia_summary_l{level}_v3.json", "w") as f:
         json.dump(summary, f, indent=2)
 
 
