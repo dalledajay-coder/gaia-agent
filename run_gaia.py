@@ -175,7 +175,7 @@ async def main():
         print(f"[{done}/{total}] {status} | Got: {ans[:80]} | Gold: {gold} | {elapsed:.0f}s | Running: {correct}/{done}={correct/done*100:.0f}%")
         sys.stdout.flush()
 
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(2)  # Longer delay to reduce rate limiting
 
     accuracy = correct / done * 100 if done else 0
     print(f"\nLEVEL {level} FINAL: {correct}/{done} = {accuracy:.1f}%")

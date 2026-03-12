@@ -177,7 +177,7 @@ async def main():
         print(f"[{done}/{len(to_run)}] {status} | Got: {ans[:60]} | Gold: {gold[:40]} | {elapsed:.0f}s | Running: {correct}/{done}={correct/done*100:.0f}%")
         sys.stdout.flush()
 
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(3)  # Longer delay to reduce rate limiting
 
     print(f"\nDone: {correct}/{done} = {correct/done*100:.1f}%" if done else "\nNo tasks completed")
 
